@@ -10,22 +10,26 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        /* 修正網頁版圖示微調 */
+        .lucide { display: inline-block; vertical-align: middle; }
     </style>
 </head>
-<body>
+<body class="bg-slate-100">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
 
-        // --- 1. 圖示封裝 (讓 HTML 版能讀懂你的 <Save />, <Upload /> 等標籤) ---
-        const Icon = ({ name, size = 18, className = "" }) => {
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        // --- Lucide 圖示適配器 ---
+        const Icon = ({ name, size = 18, class: className }) => {
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            });
+            return <i data-lucide={name} style={{width: size, height: size}} class={className}></i>;
         };
 
+        // 定義組件中用到的圖示
         const Save = (p) => <Icon name="save" {...p} />;
         const Upload = (p) => <Icon name="upload" {...p} />;
         const UserPlus = (p) => <Icon name="user-plus" {...p} />;
@@ -39,7 +43,7 @@
         const CheckSquare = (p) => <Icon name="check-square" {...p} />;
         const Square = (p) => <Icon name="square" {...p} />;
 
-        // --- 2. 初始預設資料 (保持你的原始設定) ---
+        // --- 初始預設資料 ---
         const DEFAULT_PERSONNEL = ['Anita', 'Anny', 'Rita', 'Peggy'];
         const DEFAULT_WEIGHTS = {
             newCase: 10, oldCase: 5, classA: 5, classB: 5,
@@ -47,7 +51,6 @@
             modeCountUnit: 1, chClassBBonus: 10
         };
 
-        // --- 3. App 主體 (你的原始邏輯) ---
         const App = () => {
             const [activeTab, setActiveTab] = useState('dashboard');
             const [personnel, setPersonnel] = useState(DEFAULT_PERSONNEL);
@@ -58,8 +61,7 @@
             const [formData, setFormData] = useState({
                 caseNumber: '', isNew: true, classType: 'A',
                 hasEn: true, enCopies: 1, enModes: 1,
-                hasCh: false, chCopies: 1, chModes: 1,
-                manualAssignee: ''
+                hasCh: false, chCopies: 1, chModes: 1, manualAssignee: ''
             });
 
             const [dateRange, setDateRange] = useState({
@@ -75,7 +77,7 @@
                         if (parsed.personnel) setPersonnel(parsed.personnel);
                         if (parsed.weights) setWeights(parsed.weights);
                         if (parsed.records) setRecords(parsed.records);
-                    } catch (e) { console.error("讀取存檔失敗", e); }
+                    } catch (e) { console.error("讀取失敗", e); }
                 }
             }, []);
 
@@ -126,7 +128,7 @@
 
             const handleAssign = () => {
                 if (!formData.caseNumber) return showNotify("請輸入案號！");
-                if (!formData.hasEn && !formData.hasCh) return showNotify("請選擇報告類型！");
+                if (!formData.hasEn && !formData.hasCh) return showNotify("請至少選擇一種報告類型！");
 
                 const currentWeight = calculateWeight(formData);
                 const assignee = formData.manualAssignee || recommendedAssignee;
@@ -141,196 +143,192 @@
                 };
 
                 setRecords([newRecord, ...records]);
-                showNotify(`案號 ${formData.caseNumber} 已派給 ${assignee}`);
+                showNotify(`已派給 ${assignee}`);
                 setFormData(prev => ({ ...prev, caseNumber: '', manualAssignee: '' }));
             };
 
-            const handleDeleteRecord = (id) => {
-                if (confirm('確定要刪除嗎？')) setRecords(records.filter(r => r.id !== id));
-            };
-
             const exportCSV = () => {
-                const headers = ["時間", "案號", "人員", "新舊案", "Class", "英文", "份數", "Mode", "中文", "份數", "Mode", "總權重"];
-                const rows = records.map(r => [
-                    new Date(r.timestamp).toLocaleString(), r.caseNumber, r.assignee,
-                    r.isNew ? 'New' : 'Old', r.classType,
-                    r.hasEn ? 'Yes' : 'No', r.enCopies, r.enModes,
-                    r.hasCh ? 'Yes' : 'No', r.chCopies, r.chModes, r.weight
-                ]);
+                const headers = ["時間", "案號", "人員", "新舊案", "Class", "總權重"];
+                const rows = records.map(r => [new Date(r.timestamp).toLocaleString(), r.caseNumber, r.assignee, r.isNew ? 'New' : 'Old', r.classType, r.weight]);
                 const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement("a");
                 link.href = URL.createObjectURL(blob);
-                link.download = `EMC_Data_${new Date().toISOString().split('T')[0]}.csv`;
+                link.download = `EMC_Data_${new Date().toLocaleDateString()}.csv`;
                 link.click();
             };
 
             const TabButton = ({ id, label, icon: IconComp }) => (
-                <button onClick={() => setActiveTab(id)} className={`flex items-center gap-2 px-4 py-3 font-medium transition-all ${activeTab === id ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <button onClick={() => setActiveTab(id)} class={`flex items-center gap-2 px-4 py-3 font-medium transition-all ${activeTab === id ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-500 hover:bg-slate-50'}`}>
                     <IconComp size={18} /> {label}
                 </button>
             );
 
             return (
-                <div className="min-h-screen bg-slate-100 p-4 md:p-8">
-                    <div className="max-w-5xl mx-auto">
-                        <header className="flex justify-between items-center mb-8">
-                            <div>
-                                <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2"><Calculator className="text-blue-600" /> EMC 權重派案大師</h1>
-                                <p className="text-slate-500">公平、公正、公開（多重報告模式）</p>
-                            </div>
-                        </header>
-
-                        <nav className="bg-white rounded-t-xl shadow-sm border-b flex overflow-x-auto">
-                            <TabButton id="dashboard" label="派案中心" icon={PieChart} />
-                            <TabButton id="history" label="歷史紀錄" icon={History} />
-                            <TabButton id="settings" label="設定與權重" icon={Settings} />
-                            <TabButton id="data" label="資料管理" icon={Save} />
-                        </nav>
-
-                        <main className="bg-white rounded-b-xl shadow-lg p-6 min-h-[500px]">
-                            {activeTab === 'dashboard' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                    <div className="lg:col-span-2 space-y-6">
-                                        <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                                            <h2 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2"><Edit3 size={20}/> 新增派案</h2>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">案號</label>
-                                                    <input type="text" value={formData.caseNumber} onChange={(e) => setFormData({...formData, caseNumber: e.target.value})} className="w-full p-2 border rounded-lg" placeholder="EMC案號"/>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium mb-1">類型 & 等級</label>
-                                                    <div className="flex gap-2">
-                                                        <select value={formData.isNew ? 'New' : 'Old'} onChange={(e) => setFormData({...formData, isNew: e.target.value === 'New'})} className="flex-1 p-2 border rounded-lg bg-white">
-                                                            <option value="New">新案</option><option value="Old">舊案</option>
-                                                        </select>
-                                                        <select value={formData.classType} onChange={(e) => setFormData({...formData, classType: e.target.value})} className="flex-1 p-2 border rounded-lg bg-white">
-                                                            <option value="A">Class A</option><option value="B">Class B</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="space-y-3 mb-6">
-                                                <div className={`p-3 rounded-lg border ${formData.hasEn ? 'bg-white border-blue-300 shadow-sm' : 'bg-slate-50 opacity-60'}`}>
-                                                    <button onClick={() => setFormData({...formData, hasEn: !formData.hasEn})} className="flex items-center gap-2 text-sm font-bold mb-2">
-                                                        {formData.hasEn ? <CheckSquare size={18} /> : <Square size={18} />} 英文報告
-                                                    </button>
-                                                    {formData.hasEn && <div className="flex gap-4 ml-7">
-                                                        <input type="number" value={formData.enCopies} onChange={e=>setFormData({...formData, enCopies:e.target.value})} className="w-20 border p-1 rounded text-sm" placeholder="份數"/>
-                                                        <input type="number" value={formData.enModes} onChange={e=>setFormData({...formData, enModes:e.target.value})} className="w-20 border p-1 rounded text-sm" placeholder="Modes"/>
-                                                    </div>}
-                                                </div>
-                                                <div className={`p-3 rounded-lg border ${formData.hasCh ? 'bg-white border-emerald-300 shadow-sm' : 'bg-slate-50 opacity-60'}`}>
-                                                    <button onClick={() => setFormData({...formData, hasCh: !formData.hasCh})} className="flex items-center gap-2 text-sm font-bold mb-2">
-                                                        {formData.hasCh ? <CheckSquare size={18} /> : <Square size={18} />} 中文報告
-                                                    </button>
-                                                    {formData.hasCh && <div className="flex gap-4 ml-7">
-                                                        <input type="number" value={formData.chCopies} onChange={e=>setFormData({...formData, chCopies:e.target.value})} className="w-20 border p-1 rounded text-sm" placeholder="份數"/>
-                                                        <input type="number" value={formData.chModes} onChange={e=>setFormData({...formData, chModes:e.target.value})} className="w-20 border p-1 rounded text-sm" placeholder="Modes"/>
-                                                    </div>}
-                                                </div>
-                                            </div>
-                                            <div className="bg-white/60 p-3 rounded-lg border mb-6 flex justify-between items-center">
-                                                <span>本案權重：</span><span className="text-2xl font-bold text-blue-600">{calculateWeight(formData)}</span>
-                                            </div>
-                                            <div className="mb-6">
-                                                <label className="block text-sm font-medium mb-2">指派 (建議: <strong className="text-green-600">{recommendedAssignee}</strong>)</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {personnel.map(p => (
-                                                        <button key={p} onClick={() => setFormData({...formData, manualAssignee: p})} className={`px-4 py-2 rounded-full text-sm border transition-all ${(formData.manualAssignee || recommendedAssignee) === p ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600'}`}>
-                                                            {p} {recommendedAssignee === p && !formData.manualAssignee && '★'}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <button onClick={handleAssign} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md">確認派案</button>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-6">
-                                        <div className="bg-white border rounded-xl p-6 shadow-sm">
-                                            <h3 className="font-bold mb-4">工作量統計</h3>
-                                            <div className="flex gap-2 mb-4">
-                                                <input type="date" value={dateRange.start} onChange={e=>setDateRange({...dateRange, start:e.target.value})} className="text-xs border p-1 rounded w-full"/>
-                                                <input type="date" value={dateRange.end} onChange={e=>setDateRange({...dateRange, end:e.target.value})} className="text-xs border p-1 rounded w-full"/>
-                                            </div>
-                                            <div className="space-y-4">
-                                                {workloadStats.map((stat, idx) => (
-                                                    <div key={stat.name}>
-                                                        <div className="flex justify-between text-sm mb-1">
-                                                            <span>{stat.name} {idx === 0 && '☕'}</span><span className="font-bold">{stat.weight} pts</span>
-                                                        </div>
-                                                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                                            <div className={`h-full ${idx === 0 ? 'bg-green-500' : 'bg-blue-400'}`} style={{ width: `${Math.min((stat.weight / (workloadStats[workloadStats.length-1].weight || 1)) * 100, 100)}%` }}></div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'history' && (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50 border-b">
-                                            <tr>
-                                                <th className="px-4 py-3">時間</th><th className="px-4 py-3">案號</th><th className="px-4 py-3">人員</th><th className="px-4 py-3">報告詳情</th><th className="px-4 py-3 text-right">權重</th><th className="px-4 py-3 text-center">操作</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {records.map(rec => (
-                                                <tr key={rec.id} className="border-b hover:bg-slate-50">
-                                                    <td className="px-4 py-3">{new Date(rec.timestamp).toLocaleDateString()}</td>
-                                                    <td className="px-4 py-3 font-bold">{rec.caseNumber}</td>
-                                                    <td className="px-4 py-3"><span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">{rec.assignee}</span></td>
-                                                    <td className="px-4 py-3 text-xs">
-                                                        {rec.hasEn && <div className="text-blue-600">EN:{rec.enCopies}f/{rec.enModes}M</div>}
-                                                        {rec.hasCh && <div className="text-emerald-600">CH:{rec.chCopies}f/{rec.chModes}M</div>}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-right font-bold">{rec.weight}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <button onClick={() => handleDeleteRecord(rec.id)} className="text-red-400 hover:text-red-600"><Trash2 size={16}/></button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-
-                            {activeTab === 'settings' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm">
-                                    <div className="bg-slate-50 p-4 rounded-xl">
-                                        <h2 className="font-bold mb-4">人員管理</h2>
-                                        {personnel.map(p => (
-                                            <div key={p} className="flex justify-between items-center p-2 border-b">
-                                                <span>{p}</span><button onClick={() => setPersonnel(personnel.filter(n => n !== p))} className="text-red-400">刪除</button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <div className="bg-slate-50 p-4 rounded-xl">
-                                        <h2 className="font-bold mb-4">權重設定</h2>
-                                        {Object.entries(weights).map(([k, v]) => (
-                                            <div key={k} className="flex justify-between mb-2">
-                                                <span>{k}</span>
-                                                <input type="number" value={v} onChange={e=>setWeights({...weights, [k]:Number(e.target.value)})} className="w-16 border text-right"/>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'data' && (
-                                <div className="flex flex-col items-center py-12 gap-6">
-                                    <button onClick={exportCSV} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2"><Save size={20}/> 匯出 CSV 備份</button>
-                                    <p className="text-slate-400 text-sm italic">資料目前存放在你的瀏覽器快取 (LocalStorage) 中。</p>
-                                </div>
-                            )}
-                        </main>
-                        {notification && <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl animate-bounce">{notification}</div>}
+                <div class="max-w-5xl mx-auto p-4 md:p-8">
+                    <div class="flex justify-between items-center mb-8">
+                        <div>
+                            <h1 class="text-3xl font-bold text-slate-800 flex items-center gap-2"><Calculator class="text-blue-600" /> EMC 權重派案大師</h1>
+                            <p class="text-slate-500 mt-1">公平、公正、公開（支援多重報告模式）</p>
+                        </div>
                     </div>
+
+                    <nav class="bg-white rounded-t-xl shadow-sm border-b flex overflow-x-auto">
+                        <TabButton id="dashboard" label="派案中心" icon={PieChart} />
+                        <TabButton id="history" label="歷史紀錄" icon={History} />
+                        <TabButton id="settings" label="設定與權重" icon={Settings} />
+                        <TabButton id="data" label="資料管理" icon={Save} />
+                    </nav>
+
+                    <div class="bg-white rounded-b-xl shadow-lg p-6 min-h-[500px]">
+                        {activeTab === 'dashboard' && (
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div class="lg:col-span-2 space-y-6">
+                                    <div class="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                                        <h2 class="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2"><Edit3 size={20}/> 新增派案</h2>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-slate-700 mb-1">案號</label>
+                                                <input type="text" value={formData.caseNumber} onChange={e => setFormData({...formData, caseNumber: e.target.value})} class="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="案號"/>
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-slate-700 mb-1">類型</label>
+                                                <div class="flex gap-2">
+                                                    <select value={formData.isNew ? 'New' : 'Old'} onChange={e => setFormData({...formData, isNew: e.target.value === 'New'})} class="flex-1 p-2 border rounded-lg bg-white">
+                                                        <option value="New">新案</option><option value="Old">舊案</option>
+                                                    </select>
+                                                    <select value={formData.classType} onChange={e => setFormData({...formData, classType: e.target.value})} class="flex-1 p-2 border rounded-lg bg-white">
+                                                        <option value="A">Class A</option><option value="B">Class B</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="space-y-3 mb-6">
+                                            <div class={`p-3 rounded-lg border ${formData.hasEn ? 'bg-white border-blue-300' : 'bg-slate-50 opacity-60'}`}>
+                                                <button onClick={() => setFormData({...formData, hasEn: !formData.hasEn})} class="flex items-center gap-2 text-sm font-bold">
+                                                    {formData.hasEn ? <CheckSquare size={18} /> : <Square size={18} />} 英文報告
+                                                </button>
+                                                {formData.hasEn && <div class="flex gap-4 ml-7 mt-2">
+                                                    <input type="number" value={formData.enCopies} onChange={e=>setFormData({...formData, enCopies:e.target.value})} class="w-20 border rounded p-1" placeholder="份數"/>
+                                                    <input type="number" value={formData.enModes} onChange={e=>setFormData({...formData, enModes:e.target.value})} class="w-20 border rounded p-1" placeholder="Modes"/>
+                                                </div>}
+                                            </div>
+                                            <div class={`p-3 rounded-lg border ${formData.hasCh ? 'bg-white border-emerald-300' : 'bg-slate-50 opacity-60'}`}>
+                                                <button onClick={() => setFormData({...formData, hasCh: !formData.hasCh})} class="flex items-center gap-2 text-sm font-bold">
+                                                    {formData.hasCh ? <CheckSquare size={18} /> : <Square size={18} />} 中文報告
+                                                </button>
+                                                {formData.hasCh && <div class="flex gap-4 ml-7 mt-2">
+                                                    <input type="number" value={formData.chCopies} onChange={e=>setFormData({...formData, chCopies:e.target.value})} class="w-20 border rounded p-1" placeholder="份數"/>
+                                                    <input type="number" value={formData.chModes} onChange={e=>setFormData({...formData, chModes:e.target.value})} class="w-20 border rounded p-1" placeholder="Modes"/>
+                                                </div>}
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-between items-center mb-6 px-2">
+                                            <span class="text-sm font-bold text-slate-600">預估權重：<span class="text-2xl text-blue-600">{calculateWeight(formData)}</span></span>
+                                            <button onClick={handleAssign} class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">確認派案</button>
+                                        </div>
+                                        <div class="flex flex-wrap gap-2 pt-4 border-t border-blue-200">
+                                            {personnel.map(p => (
+                                                <button key={p} onClick={() => setFormData({...formData, manualAssignee: p})} class={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${ (formData.manualAssignee || recommendedAssignee) === p ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-100' : 'bg-white text-slate-600'}`}>
+                                                    {p} {recommendedAssignee === p && !formData.manualAssignee && '★'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="space-y-6">
+                                    <div class="bg-white border rounded-xl p-6 shadow-sm">
+                                        <h3 class="font-bold text-slate-800 mb-4 flex items-center gap-2"><PieChart size={18}/> 工作量統計</h3>
+                                        <div class="space-y-4">
+                                            {workloadStats.map((stat, idx) => (
+                                                <div key={stat.name}>
+                                                    <div class="flex justify-between text-sm mb-1">
+                                                        <span class={idx === 0 ? 'text-green-600 font-bold' : 'text-slate-700'}>{stat.name}</span>
+                                                        <span class="font-bold text-slate-600">{stat.weight} pts</span>
+                                                    </div>
+                                                    <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                                                        <div class={`h-full rounded-full ${idx === 0 ? 'bg-green-500' : 'bg-blue-400'}`} style={{ width: `${Math.min((stat.weight / (workloadStats[workloadStats.length-1].weight || 1)) * 100, 100)}%` }}></div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'history' && (
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm text-left">
+                                    <thead class="bg-slate-50 border-b text-slate-700 font-bold">
+                                        <tr><th class="px-4 py-3">時間</th><th class="px-4 py-3">案號</th><th class="px-4 py-3">人員</th><th class="px-4 py-3">類型</th><th class="px-4 py-3 text-right">權重</th><th class="px-4 py-3 text-center">刪除</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {records.map(rec => (
+                                            <tr key={rec.id} class="border-b hover:bg-slate-50">
+                                                <td class="px-4 py-3 text-slate-500">{new Date(rec.timestamp).toLocaleDateString()}</td>
+                                                <td class="px-4 py-3 font-bold text-slate-900">{rec.caseNumber}</td>
+                                                <td class="px-4 py-3"><span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">{rec.assignee}</span></td>
+                                                <td class="px-4 py-3">{rec.isNew ? '新' : '舊'} / {rec.classType}</td>
+                                                <td class="px-4 py-3 text-right font-bold text-blue-600">{rec.weight}</td>
+                                                <td class="px-4 py-3 text-center"><button onClick={() => {if(confirm('刪除？')) setRecords(records.filter(r=>r.id!==rec.id))}} class="text-red-400 hover:text-red-600"><Trash2 size={16}/></button></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {activeTab === 'settings' && (
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div class="bg-slate-50 p-6 rounded-xl border">
+                                    <h3 class="font-bold mb-4">工程師管理</h3>
+                                    <div class="space-y-2">
+                                        {personnel.map(p => (
+                                            <div key={p} class="flex justify-between items-center p-2 bg-white rounded border">
+                                                <span>{p}</span><button onClick={() => setPersonnel(personnel.filter(n=>n!==p))} class="text-red-400">刪除</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div class="bg-slate-50 p-6 rounded-xl border">
+                                    <h3 class="font-bold mb-4">權重數值設定</h3>
+                                    <div class="grid grid-cols-1 gap-2">
+                                        {Object.entries(weights).map(([k, v]) => (
+                                            <div key={k} class="flex justify-between items-center bg-white p-2 border rounded">
+                                                <span class="text-xs font-bold text-slate-500 uppercase">{k}</span>
+                                                <input type="number" value={v} onChange={e=>setWeights({...weights, [k]: Number(e.target.value)})} class="w-16 border rounded text-right p-1"/>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'data' && (
+                            <div class="flex flex-col items-center py-12 gap-6">
+                                <div class="text-center mb-4">
+                                    <h3 class="text-lg font-bold">本地儲存空間 (LocalStorage)</h3>
+                                    <p class="text-slate-500">資料已自動儲存在此瀏覽器，若清除快取資料將會遺失。</p>
+                                </div>
+                                <button onClick={exportCSV} class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Save size={20}/> 匯出 CSV 備份</button>
+                                <label class="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg cursor-pointer">
+                                    <Upload size={20}/> 恢復資料庫
+                                    <input type="file" class="hidden" onChange={(e) => {
+                                        const reader = new FileReader();
+                                        reader.onload = (ev) => {
+                                            try {
+                                                const csv = ev.target.result;
+                                                alert("CSV 解析功能需視您的匯入格式而定，建議使用本系統匯出的檔案。");
+                                            } catch(err) { alert("讀取錯誤"); }
+                                        };
+                                        reader.readAsText(e.target.files[0]);
+                                    }} />
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                    {notification && <div class="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-2xl animate-bounce">{notification}</div>}
                 </div>
             );
         };
