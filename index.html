@@ -18,6 +18,15 @@
         /* 避免讀取時閃爍 */
         body { opacity: 0; animation: fadeIn 0.5s forwards; }
         @keyframes fadeIn { to { opacity: 1; } }
+        
+        /* 簡單的淡入動畫 */
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out forwards;
+        }
     </style>
 </head>
 <body class="bg-slate-100">
@@ -25,16 +34,14 @@
 
     <script type="text/babel">
         // --- 環境適配區 (Adapter Layer) ---
-        // 解構 React Hooks，讓下方原本的程式碼不用改
+        // 解構 React Hooks
         const { useState, useEffect, useMemo, useCallback } = React;
 
         // 模擬 lucide-react 的組件行為
-        // 因為瀏覽器端不能直接 import，我們用 lucide 全域變數來產生對應的 SVG 組件
         const LucideIcon = ({ name, size = 24, className, ...props }) => {
             const iconData = lucide.icons[name];
             if (!iconData) return null;
             
-            // 將 lucide 的 icon 轉換為 React SVG
             return (
                 <svg 
                     xmlns="http://www.w3.org/2000/svg" 
@@ -93,6 +100,9 @@
             const [weights, setWeights] = useState(DEFAULT_WEIGHTS);
             const [records, setRecords] = useState([]);
             const [notification, setNotification] = useState(null);
+            
+            // --- 批次操作 State ---
+            const [selectedIds, setSelectedIds] = useState(new Set());
 
             // --- 派案表單 State (升級版) ---
             const [formData, setFormData] = useState({
@@ -196,8 +206,6 @@
                             const serverRecords = parseCSVData(text);
                             
                             // 3. 合併資料 (Server 資料 + Local 資料，去除重複 ID)
-                            // 這裡的邏輯是：如果 ID 相同，以 LocalStorage 為準 (假設本地有未上傳的修改)
-                            // 但通常建議 Server 為主，這裡我們簡單做聯集
                             const combinedRecords = [...localRecords];
                             const existingIds = new Set(localRecords.map(r => r.id));
                             
@@ -230,6 +238,11 @@
                 localStorage.setItem('emc_data', JSON.stringify(dataToSave));
             }, [personnel, weights, records]);
 
+            // --- 切換分頁時清空選取狀態 ---
+            useEffect(() => {
+                setSelectedIds(new Set());
+            }, [activeTab]);
+
             // --- 計算單案權重 (核心邏輯升級) ---
             const calculateWeight = (data) => {
                 let score = 0;
@@ -250,8 +263,9 @@
                     score += (data.chCopies || 0) * weights.reportCountUnit;
                     score += (data.chModes || 0) * weights.modeCountUnit;
                     
-                    // 特殊規則：中文報告且為 Class B (痛苦加成)
-                    if (data.classType === 'B') {
+                    // 特殊規則：中文報告且為 Class B 且為 新案 (痛苦加成)
+                    // 修改：加入 data.isNew 判斷
+                    if (data.classType === 'B' && data.isNew) {
                         score += (weights.chClassBBonus || 0);
                     }
                 }
@@ -327,12 +341,49 @@
                 }));
             };
 
-            // --- 刪除紀錄 ---
+            // --- 刪除紀錄 (單筆) ---
             const handleDeleteRecord = (id) => {
                 if (confirm('確定要刪除這筆紀錄嗎？此動作無法復原。')) {
                     setRecords(records.filter(r => r.id !== id));
+                    // 如果刪除的項目在選取清單中，也要移除
+                    if (selectedIds.has(id)) {
+                        const newSelected = new Set(selectedIds);
+                        newSelected.delete(id);
+                        setSelectedIds(newSelected);
+                    }
                     showNotify("紀錄已刪除");
                 }
+            };
+
+            // --- 批次刪除邏輯 ---
+            const handleBatchDelete = () => {
+                if (selectedIds.size === 0) return;
+                
+                if (confirm(`警告：您即將刪除 ${selectedIds.size} 筆資料。\n\n此動作無法復原，確定要繼續嗎？`)) {
+                    setRecords(records.filter(r => !selectedIds.has(r.id)));
+                    setSelectedIds(new Set());
+                    showNotify(`已成功刪除 ${selectedIds.size} 筆紀錄`);
+                }
+            };
+
+            // --- 全選/取消全選 ---
+            const handleSelectAll = (e) => {
+                if (e.target.checked) {
+                    setSelectedIds(new Set(records.map(r => r.id)));
+                } else {
+                    setSelectedIds(new Set());
+                }
+            };
+
+            // --- 單選切換 ---
+            const handleSelectRow = (id) => {
+                const newSelected = new Set(selectedIds);
+                if (newSelected.has(id)) {
+                    newSelected.delete(id);
+                } else {
+                    newSelected.add(id);
+                }
+                setSelectedIds(newSelected);
             };
 
             // --- CSV 匯出 (格式更新) ---
@@ -575,7 +626,7 @@
                                                         <span className={`text-sm font-bold ${formData.hasCh ? 'text-emerald-700' : 'text-slate-500'}`}>
                                                             中文報告 (Chinese)
                                                         </span>
-                                                        {formData.hasCh && formData.classType === 'B' && (
+                                                        {formData.hasCh && formData.classType === 'B' && formData.isNew && (
                                                             <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
                                                                 🔥 痛苦加成已啟動
                                                             </span>
@@ -688,7 +739,7 @@
                                         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 text-sm text-orange-800">
                                             <p className="font-bold mb-1">💡 派案小提示</p>
                                             <p>若同時勾選中英文報告，權重會疊加計算。</p>
-                                            <p className="mt-1">Class B 的中文報告仍享有 {weights.chClassBBonus} 分的特別加成。</p>
+                                            <p className="mt-1">僅「新案」的 Class B 中文報告享有 {weights.chClassBBonus} 分的特別加成。</p>
                                         </div>
                                     </div>
                                 </div>
@@ -698,13 +749,32 @@
                             {activeTab === 'history' && (
                                 <div>
                                     <div className="flex justify-between items-center mb-4">
-                                        <h2 className="text-xl font-bold text-slate-800">歷史派案紀錄</h2>
-                                        <span className="text-sm text-slate-500">共 {records.length} 筆</span>
+                                        <div className="flex items-center gap-4">
+                                            <h2 className="text-xl font-bold text-slate-800">歷史派案紀錄</h2>
+                                            <span className="text-sm text-slate-500">共 {records.length} 筆</span>
+                                        </div>
+                                        {selectedIds.size > 0 && (
+                                            <button 
+                                                onClick={handleBatchDelete}
+                                                className="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-1.5 rounded-lg flex items-center gap-2 shadow-sm transition-all animate-fade-in"
+                                            >
+                                                <Trash2 size={16} />
+                                                刪除選取項目 ({selectedIds.size})
+                                            </button>
+                                        )}
                                     </div>
                                     <div className="overflow-x-auto border rounded-lg">
                                         <table className="w-full text-sm text-left text-slate-600">
                                             <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b">
                                                 <tr>
+                                                    <th className="px-4 py-3 w-10">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            onChange={handleSelectAll}
+                                                            checked={records.length > 0 && selectedIds.size === records.length}
+                                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                        />
+                                                    </th>
                                                     <th className="px-4 py-3">時間</th>
                                                     <th className="px-4 py-3">案號</th>
                                                     <th className="px-4 py-3">人員</th>
@@ -716,7 +786,15 @@
                                             </thead>
                                             <tbody>
                                                 {records.map(rec => (
-                                                    <tr key={rec.id} className="bg-white border-b hover:bg-slate-50">
+                                                    <tr key={rec.id} className={`border-b hover:bg-slate-50 transition-colors ${selectedIds.has(rec.id) ? 'bg-blue-50' : 'bg-white'}`}>
+                                                        <td className="px-4 py-3">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={selectedIds.has(rec.id)}
+                                                                onChange={() => handleSelectRow(rec.id)}
+                                                                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                            />
+                                                        </td>
                                                         <td className="px-4 py-3">{new Date(rec.timestamp).toLocaleDateString()}</td>
                                                         <td className="px-4 py-3 font-medium text-slate-900">{rec.caseNumber}</td>
                                                         <td className="px-4 py-3">
