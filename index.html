@@ -4,180 +4,393 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>EMC 權重派案大師</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
     <script src="https://unpkg.com/lucide@latest"></script>
+    
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        /* 修正網頁版圖示對齊 */
-        .lucide { display: inline-block; vertical-align: middle; }
+        /* 避免讀取時閃爍 */
+        body { opacity: 0; animation: fadeIn 0.5s forwards; }
+        @keyframes fadeIn { to { opacity: 1; } }
     </style>
 </head>
 <body class="bg-slate-100">
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        // --- 環境適配區 (Adapter Layer) ---
+        // 解構 React Hooks，讓下方原本的程式碼不用改
+        const { useState, useEffect, useMemo, useCallback } = React;
 
-        // --- Lucide 圖示適配器 (讓 HTML 支援你的 <Save />, <Upload /> 等寫法) ---
-        const Icon = ({ name, size = 18, className = "" }) => {
-            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
-            return <i data-lucide={name} style={{width: size, height: size}} className={className}></i>;
+        // 模擬 lucide-react 的組件行為
+        // 因為瀏覽器端不能直接 import，我們用 lucide 全域變數來產生對應的 SVG 組件
+        const LucideIcon = ({ name, size = 24, className, ...props }) => {
+            const iconData = lucide.icons[name];
+            if (!iconData) return null;
+            
+            // 將 lucide 的 icon 轉換為 React SVG
+            return (
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width={size} 
+                    height={size} 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    className={className}
+                    {...props}
+                >
+                    {iconData.map((child, index) => {
+                        const [tag, attrs] = child;
+                        return React.createElement(tag, { ...attrs, key: index });
+                    })}
+                </svg>
+            );
         };
 
-        const Save = (p) => <Icon name="save" {...p} />;
-        const Upload = (p) => <Icon name="upload" {...p} />;
-        const UserPlus = (p) => <Icon name="user-plus" {...p} />;
-        const Settings = (p) => <Icon name="settings" {...p} />;
-        const PieChart = (p) => <Icon name="pie-chart" {...p} />;
-        const History = (p) => <Icon name="history" {...p} />;
-        const Calculator = (p) => <Icon name="calculator" {...p} />;
-        const Trash2 = (p) => <Icon name="trash-2" {...p} />;
-        const Edit3 = (p) => <Icon name="edit-3" {...p} />;
-        const ArrowRight = (p) => <Icon name="arrow-right" {...p} />;
-        const CheckSquare = (p) => <Icon name="check-square" {...p} />;
-        const Square = (p) => <Icon name="square" {...p} />;
+        // 定義原本程式碼中用到的所有圖標組件
+        const Save = (props) => <LucideIcon name="Save" {...props} />;
+        const Upload = (props) => <LucideIcon name="Upload" {...props} />;
+        const UserPlus = (props) => <LucideIcon name="UserPlus" {...props} />;
+        const Settings = (props) => <LucideIcon name="Settings" {...props} />;
+        const PieChart = (props) => <LucideIcon name="PieChart" {...props} />;
+        const History = (props) => <LucideIcon name="History" {...props} />;
+        const Calculator = (props) => <LucideIcon name="Calculator" {...props} />;
+        const Trash2 = (props) => <LucideIcon name="Trash2" {...props} />;
+        const Edit3 = (props) => <LucideIcon name="Edit3" {...props} />;
+        const ArrowRight = (props) => <LucideIcon name="ArrowRight" {...props} />;
 
+        // --- 以下完全是您原本的程式碼 (Original Code) ---
+        
         // --- 初始預設資料 ---
         const DEFAULT_PERSONNEL = ['Anita', 'Anny', 'Rita', 'Peggy'];
+
         const DEFAULT_WEIGHTS = {
-            newCase: 10, oldCase: 5, classA: 5, classB: 5,
-            enReport: 5, chReport: 8, reportCountUnit: 2,
-            modeCountUnit: 1, chClassBBonus: 10
+            newCase: 10,       // 新案
+            oldCase: 5,        // 舊案
+            classA: 5,         // Class A
+            classB: 5,         // Class B
+            enReport: 5,       // 英文報告基本分
+            chReport: 8,       // 中文報告基本分
+            reportCountUnit: 2,// 每份報告單價
+            modeCountUnit: 1,  // 每個 Mode 單價
+            chClassBBonus: 10  // 中文報告 + Class B 的額外加權 (痛苦加成)
         };
 
-        // --- 核心應用程式 (保持你的原始邏輯) ---
         const App = () => {
-            const [activeTab, setActiveTab] = useState('dashboard');
+            // --- State 管理 ---
+            const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, history, settings, data
             const [personnel, setPersonnel] = useState(DEFAULT_PERSONNEL);
             const [weights, setWeights] = useState(DEFAULT_WEIGHTS);
             const [records, setRecords] = useState([]);
             const [notification, setNotification] = useState(null);
 
+            // --- 派案表單 State (升級版) ---
             const [formData, setFormData] = useState({
-                caseNumber: '', isNew: true, classType: 'B',
-                hasEn: true, enCopies: 1, enModes: 1,
-                hasCh: false, chCopies: 1, chModes: 1, manualAssignee: ''
+                caseNumber: '',
+                isNew: true,
+                classType: 'B', // 改為預設 Class B
+                // 改為獨立控制中英文
+                hasEn: true,
+                enCopies: 1,
+                enModes: 1,
+                hasCh: false, // 預設不勾選中文
+                chCopies: 1,
+                chModes: 1,
+                manualAssignee: ''
             });
 
+            // --- 篩選時間區間 (預設過去 30 天) ---
             const [dateRange, setDateRange] = useState({
                 start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
                 end: new Date().toISOString().split('T')[0]
             });
 
-            useEffect(() => {
-                const savedData = localStorage.getItem('emc_data');
-                if (savedData) {
-                    try {
-                        const parsed = JSON.parse(savedData);
-                        if (parsed.personnel) setPersonnel(parsed.personnel);
-                        if (parsed.weights) setWeights({ ...DEFAULT_WEIGHTS, ...parsed.weights });
-                        if (parsed.records) setRecords(parsed.records);
-                    } catch (e) { console.error("讀取存檔失敗", e); }
-                }
-            }, []);
-
-            useEffect(() => {
-                const dataToSave = { personnel, weights, records };
-                localStorage.setItem('emc_data', JSON.stringify(dataToSave));
-            }, [personnel, weights, records]);
-
+            // --- 顯示通知 ---
             const showNotify = (msg) => {
                 setNotification(msg);
                 setTimeout(() => setNotification(null), 3000);
             };
 
+            // --- 共用：CSV 解析邏輯 ---
+            const parseCSVData = useCallback((text) => {
+                const rows = text.split('\n').slice(1); // Skip header
+                const newRecords = [];
+
+                rows.forEach(row => {
+                    if (!row.trim()) return;
+                    const cols = row.split(',');
+                    // 檢查欄位數量來判斷是舊格式還是新格式
+                    if (cols.length >= 12) {
+                        // 新格式
+                        newRecords.push({
+                            id: Number(cols[0]) || Date.now(),
+                            timestamp: new Date(cols[1]).toISOString(),
+                            caseNumber: cols[2],
+                            assignee: cols[3],
+                            isNew: cols[4] === 'New',
+                            classType: cols[5],
+                            hasEn: cols[6] === 'Yes',
+                            enCopies: Number(cols[7]),
+                            enModes: Number(cols[8]),
+                            hasCh: cols[9] === 'Yes',
+                            chCopies: Number(cols[10]),
+                            chModes: Number(cols[11]),
+                            weight: Number(cols[12])
+                        });
+                    } else if (cols.length >= 10) {
+                        // 舊格式相容
+                        const lang = cols[6];
+                        newRecords.push({
+                            id: Number(cols[0]) || Date.now(),
+                            timestamp: new Date(cols[1]).toISOString(),
+                            caseNumber: cols[2],
+                            assignee: cols[3],
+                            isNew: cols[4] === 'New',
+                            classType: cols[5],
+                            hasEn: lang === 'EN',
+                            enCopies: lang === 'EN' ? Number(cols[7]) : 0,
+                            enModes: lang === 'EN' ? Number(cols[8]) : 0,
+                            hasCh: lang === 'CH',
+                            chCopies: lang === 'CH' ? Number(cols[7]) : 0,
+                            chModes: lang === 'CH' ? Number(cols[8]) : 0,
+                            weight: Number(cols[9])
+                        });
+                    }
+                });
+                return newRecords;
+            }, []);
+
+            // --- 初始化載入 (localStorage + data.csv) ---
+            useEffect(() => {
+                const initData = async () => {
+                    // 1. 先讀取 LocalStorage (本地暫存)
+                    const savedData = localStorage.getItem('emc_data');
+                    let localRecords = [];
+                    if (savedData) {
+                        try {
+                            const parsed = JSON.parse(savedData);
+                            if (parsed.personnel) setPersonnel(parsed.personnel);
+                            if (parsed.weights) setWeights({ ...DEFAULT_WEIGHTS, ...parsed.weights });
+                            if (parsed.records) localRecords = parsed.records;
+                        } catch (e) {
+                            console.error("讀取存檔失敗", e);
+                        }
+                    }
+
+                    // 2. 嘗試讀取同目錄下的 data.csv (伺服器端資料)
+                    try {
+                        // 加個 timestamp 避免瀏覽器快取舊的 csv
+                        const response = await fetch(`./data.csv?t=${Date.now()}`);
+                        if (response.ok) {
+                            const text = await response.text();
+                            const serverRecords = parseCSVData(text);
+                            
+                            // 3. 合併資料 (Server 資料 + Local 資料，去除重複 ID)
+                            // 這裡的邏輯是：如果 ID 相同，以 LocalStorage 為準 (假設本地有未上傳的修改)
+                            // 但通常建議 Server 為主，這裡我們簡單做聯集
+                            const combinedRecords = [...localRecords];
+                            const existingIds = new Set(localRecords.map(r => r.id));
+                            
+                            serverRecords.forEach(srvRec => {
+                                if (!existingIds.has(srvRec.id)) {
+                                    combinedRecords.push(srvRec);
+                                }
+                            });
+                            
+                            // 重新排序
+                            combinedRecords.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            setRecords(combinedRecords);
+                            console.log("成功載入 data.csv 並與本地資料合併");
+                        } else {
+                            // 如果沒有 data.csv，就只用本地資料
+                            setRecords(localRecords);
+                        }
+                    } catch (e) {
+                        console.log("無 data.csv 或讀取失敗，使用本地資料模式");
+                        setRecords(localRecords);
+                    }
+                };
+
+                initData();
+            }, [parseCSVData]);
+
+            // --- 自動儲存到 LocalStorage ---
+            useEffect(() => {
+                const dataToSave = { personnel, weights, records };
+                localStorage.setItem('emc_data', JSON.stringify(dataToSave));
+            }, [personnel, weights, records]);
+
+            // --- 計算單案權重 (核心邏輯升級) ---
             const calculateWeight = (data) => {
                 let score = 0;
+                // 1. 案件基本分
                 score += data.isNew ? weights.newCase : weights.oldCase;
                 score += data.classType === 'A' ? weights.classA : weights.classB;
+
+                // 2. 英文報告計算
                 if (data.hasEn) {
                     score += weights.enReport;
-                    score += (Number(data.enCopies) || 0) * weights.reportCountUnit;
-                    score += (Number(data.enModes) || 0) * weights.modeCountUnit;
+                    score += (data.enCopies || 0) * weights.reportCountUnit;
+                    score += (data.enModes || 0) * weights.modeCountUnit;
                 }
+
+                // 3. 中文報告計算
                 if (data.hasCh) {
                     score += weights.chReport;
-                    score += (Number(data.chCopies) || 0) * weights.reportCountUnit;
-                    score += (Number(data.chModes) || 0) * weights.modeCountUnit;
-                    if (data.classType === 'B') score += (weights.chClassBBonus || 0);
+                    score += (data.chCopies || 0) * weights.reportCountUnit;
+                    score += (data.chModes || 0) * weights.modeCountUnit;
+                    
+                    // 特殊規則：中文報告且為 Class B (痛苦加成)
+                    if (data.classType === 'B') {
+                        score += (weights.chClassBBonus || 0);
+                    }
                 }
                 return score;
             };
 
+            // --- 統計當前權重 (公平性計算) ---
             const workloadStats = useMemo(() => {
                 const stats = {};
                 personnel.forEach(p => stats[p] = 0);
+
                 const startDate = new Date(dateRange.start);
                 const endDate = new Date(dateRange.end);
-                endDate.setHours(23, 59, 59, 999);
+                endDate.setHours(23, 59, 59, 999); // 包含結束當天
+
                 records.forEach(rec => {
                     const recDate = new Date(rec.timestamp);
                     if (recDate >= startDate && recDate <= endDate && personnel.includes(rec.assignee)) {
+                        // 確保 weight 是數字
                         stats[rec.assignee] += (Number(rec.weight) || 0);
                     }
                 });
-                return Object.entries(stats).map(([name, weight]) => ({ name, weight })).sort((a, b) => a.weight - b.weight);
+
+                // 轉為陣列並排序 (權重由低到高)
+                return Object.entries(stats)
+                    .map(([name, weight]) => ({ name, weight }))
+                    .sort((a, b) => a.weight - b.weight);
             }, [records, personnel, dateRange]);
 
+            // --- 推薦人選 (工作量最少者) ---
             const recommendedAssignee = workloadStats.length > 0 ? workloadStats[0].name : personnel[0];
 
+            // --- 提交派案 ---
             const handleAssign = () => {
-                if (!formData.caseNumber) return showNotify("請輸入案號！");
-                if (!formData.hasEn && !formData.hasCh) return showNotify("請選擇報告類型！");
+                if (!formData.caseNumber) {
+                    showNotify("請輸入案號！");
+                    return;
+                }
+                
+                if (!formData.hasEn && !formData.hasCh) {
+                    showNotify("請至少選擇一種報告類型（中文或英文）！");
+                    return;
+                }
+
                 const currentWeight = calculateWeight(formData);
                 const assignee = formData.manualAssignee || recommendedAssignee;
+
                 const newRecord = {
-                    id: Date.now(), timestamp: new Date().toISOString(),
-                    caseNumber: formData.caseNumber, assignee, isNew: formData.isNew, classType: formData.classType,
-                    hasEn: formData.hasEn, enCopies: Number(formData.enCopies), enModes: Number(formData.enModes),
-                    hasCh: formData.hasCh, chCopies: Number(formData.chCopies), chModes: Number(formData.chModes), weight: currentWeight
+                    id: Date.now(),
+                    timestamp: new Date().toISOString(),
+                    caseNumber: formData.caseNumber,
+                    assignee: assignee,
+                    isNew: formData.isNew,
+                    classType: formData.classType,
+                    // 儲存詳細報告結構
+                    hasEn: formData.hasEn,
+                    enCopies: formData.hasEn ? Number(formData.enCopies) : 0,
+                    enModes: formData.hasEn ? Number(formData.enModes) : 0,
+                    hasCh: formData.hasCh,
+                    chCopies: formData.hasCh ? Number(formData.chCopies) : 0,
+                    chModes: formData.hasCh ? Number(formData.chModes) : 0,
+                    weight: currentWeight
                 };
+
                 setRecords([newRecord, ...records]);
-                showNotify(`案號 ${formData.caseNumber} 已派給 ${assignee}`);
-                setFormData(prev => ({ ...prev, caseNumber: '', manualAssignee: '' }));
+                showNotify(`案號 ${formData.caseNumber} 已派給 ${assignee} (權重: ${currentWeight})`);
+                
+                // 重置表單，保留部分設定方便連續輸入 (例如如果都在發雙語報告，就不用一直重勾)
+                setFormData(prev => ({ 
+                    ...prev, 
+                    caseNumber: '', 
+                    manualAssignee: '' 
+                }));
             };
 
+            // --- 刪除紀錄 ---
             const handleDeleteRecord = (id) => {
-                if (confirm('確定要刪除這筆紀錄嗎？')) setRecords(records.filter(r => r.id !== id));
+                if (confirm('確定要刪除這筆紀錄嗎？此動作無法復原。')) {
+                    setRecords(records.filter(r => r.id !== id));
+                    showNotify("紀錄已刪除");
+                }
             };
 
+            // --- CSV 匯出 (格式更新) ---
             const exportCSV = () => {
-                const headers = ["ID", "時間", "案號", "人員", "新舊案", "Class", "英文報告", "英文份數", "英文Mode", "中文報告", "中文份數", "中文Mode", "總權重"];
-                const rows = records.map(r => [
-                    r.id, new Date(r.timestamp).toLocaleString(), r.caseNumber, r.assignee, r.isNew ? 'New' : 'Old', r.classType,
-                    r.hasEn ? 'Yes' : 'No', r.enCopies, r.enModes, r.hasCh ? 'Yes' : 'No', r.chCopies, r.chModes, r.weight
-                ]);
+                const headers = [
+                    "ID", "時間", "案號", "人員", "新舊案", "Class", 
+                    "英文報告", "英文份數", "英文Mode", 
+                    "中文報告", "中文份數", "中文Mode", 
+                    "總權重"
+                ];
+                
+                const rows = records.map(r => {
+                    // 處理舊資料相容性
+                    const isOldFormat = r.hasEn === undefined;
+                    const hasEn = isOldFormat ? (r.lang === 'EN') : r.hasEn;
+                    const enCopies = isOldFormat ? (r.lang === 'EN' ? r.reportCount : 0) : r.enCopies;
+                    const enModes = isOldFormat ? (r.lang === 'EN' ? r.modeCount : 0) : r.enModes;
+                    
+                    const hasCh = isOldFormat ? (r.lang === 'CH') : r.hasCh;
+                    const chCopies = isOldFormat ? (r.lang === 'CH' ? r.reportCount : 0) : r.chCopies;
+                    const chModes = isOldFormat ? (r.lang === 'CH' ? r.modeCount : 0) : r.chModes;
+
+                    return [
+                        r.id,
+                        new Date(r.timestamp).toLocaleString(),
+                        r.caseNumber,
+                        r.assignee,
+                        r.isNew ? 'New' : 'Old',
+                        r.classType,
+                        hasEn ? 'Yes' : 'No', enCopies, enModes,
+                        hasCh ? 'Yes' : 'No', chCopies, chModes,
+                        r.weight
+                    ];
+                });
+
                 const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement("a");
-                link.href = URL.createObjectURL(blob);
-                link.download = `EMC_Data_${new Date().toISOString().split('T')[0]}.csv`;
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                // 重要：這裡的檔名設為 data.csv 方便使用者直接覆蓋
+                link.setAttribute("download", "data.csv");
+                document.body.appendChild(link);
                 link.click();
+                document.body.removeChild(link);
+                showNotify("CSV 下載成功！請將此檔案上傳至 GitHub 覆蓋原檔。");
             };
 
+            // --- CSV 匯入 (使用共用解析邏輯) ---
             const importCSV = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const text = e.target.result;
-                    const rows = text.split('\n').slice(1);
-                    const newRecords = [];
-                    rows.forEach(row => {
-                        if (!row.trim()) return;
-                        const cols = row.split(',');
-                        if (cols.length >= 12) {
-                            newRecords.push({
-                                id: Number(cols[0]), timestamp: new Date(cols[1]).toISOString(), caseNumber: cols[2], assignee: cols[3],
-                                isNew: cols[4] === 'New', classType: cols[5], hasEn: cols[6] === 'Yes', enCopies: Number(cols[7]), enModes: Number(cols[8]),
-                                hasCh: cols[9] === 'Yes', chCopies: Number(cols[10]), chModes: Number(cols[11]), weight: Number(cols[12])
-                            });
-                        }
-                    });
+                    const newRecords = parseCSVData(text);
+
                     setRecords(prev => {
                         const existingIds = new Set(prev.map(r => r.id));
                         const uniqueNew = newRecords.filter(r => !existingIds.has(r.id));
@@ -186,127 +399,494 @@
                     showNotify(`成功匯入 ${newRecords.length} 筆資料`);
                 };
                 reader.readAsText(file);
+                event.target.value = ''; 
             };
 
+            // --- 輔助函式：渲染歷史紀錄的報告詳情 ---
             const renderReportDetail = (rec) => {
+                // 舊格式相容
+                if (rec.hasEn === undefined) {
+                    return (
+                        <div className="flex gap-1">
+                            <span className={`text-xs px-2 py-0.5 rounded ${rec.lang === 'EN' ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                {rec.lang} ({rec.reportCount}份/{rec.modeCount}M)
+                            </span>
+                        </div>
+                    );
+                }
+
+                // 新格式
                 return (
                     <div className="flex flex-col gap-1">
-                        {rec.hasEn && <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 w-fit">EN: {rec.enCopies}份/{rec.enModes}M</span>}
-                        {rec.hasCh && <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100 w-fit">CH: {rec.chCopies}份/{rec.chModes}M</span>}
+                        {rec.hasEn && (
+                            <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 w-fit">
+                                EN: {rec.enCopies}份 / {rec.enModes}M
+                            </span>
+                        )}
+                        {rec.hasCh && (
+                            <span className="text-xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-100 w-fit">
+                                CH: {rec.chCopies}份 / {rec.chModes}M
+                            </span>
+                        )}
                     </div>
                 );
             };
 
-            const TabButton = ({ id, label, icon: IconComp }) => (
-                <button onClick={() => setActiveTab(id)} className={`flex items-center gap-2 px-4 py-3 font-medium transition-all ${activeTab === id ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-500 hover:bg-slate-50'}`}>
-                    <IconComp size={18} /> {label}
+            // --- UI Components ---
+
+            const TabButton = ({ id, label, icon: Icon }) => (
+                <button 
+                    onClick={() => setActiveTab(id)}
+                    className={`flex items-center gap-2 px-4 py-3 font-medium transition-all ${activeTab === id ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
+                >
+                    <Icon size={18} />
+                    {label}
                 </button>
             );
 
             return (
                 <div className="min-h-screen bg-slate-100 p-4 md:p-8 font-sans">
                     <div className="max-w-5xl mx-auto">
+                        {/* Header */}
                         <div className="flex justify-between items-center mb-8">
                             <div>
-                                <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2"><Calculator className="text-blue-600" /> EMC 權重派案大師</h1>
-                                <p className="text-slate-500 mt-1">公平、公正、公開（多重報告模式）</p>
+                                <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Calculator className="text-blue-600" /> EMC 權重派案大師
+                                </h1>
+                                <p className="text-slate-500 mt-1">公平、公正、公開（自動讀取 data.csv）</p>
+                            </div>
+                            <div className="text-right hidden md:block">
+                                <div className="text-sm text-slate-400">系統時間</div>
+                                <div className="font-mono text-lg font-bold text-slate-700">{new Date().toLocaleDateString()}</div>
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-t-xl shadow-sm border-b flex overflow-x-auto">
+                        {/* Navigation */}
+                        <div className="bg-white rounded-t-xl shadow-sm border-b border-slate-200 flex overflow-x-auto">
                             <TabButton id="dashboard" label="派案中心" icon={PieChart} />
                             <TabButton id="history" label="歷史紀錄" icon={History} />
                             <TabButton id="settings" label="設定與權重" icon={Settings} />
                             <TabButton id="data" label="資料管理" icon={Save} />
                         </div>
 
+                        {/* Main Content Area */}
                         <div className="bg-white rounded-b-xl shadow-lg p-6 min-h-[500px]">
+                            
+                            {/* 1. Dashboard Tab */}
                             {activeTab === 'dashboard' && (
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    {/* Left: Input Form */}
                                     <div className="lg:col-span-2 space-y-6">
                                         <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                                            <h2 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2"><Edit3 size={20}/> 新增派案</h2>
+                                            <h2 className="text-xl font-bold text-blue-800 mb-4 flex items-center gap-2">
+                                                <Edit3 size={20}/> 新增派案
+                                            </h2>
+                                            
+                                            {/* 案號與類型 */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                                 <div>
                                                     <label className="block text-sm font-medium text-slate-700 mb-1">案號</label>
-                                                    <input type="text" value={formData.caseNumber} onChange={e => setFormData({...formData, caseNumber: e.target.value})} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="輸入案號"/>
+                                                    <input 
+                                                        type="text" 
+                                                        value={formData.caseNumber}
+                                                        onChange={(e) => setFormData({...formData, caseNumber: e.target.value})}
+                                                        placeholder="輸入 EMC 案號"
+                                                        className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                    />
                                                 </div>
                                                 <div>
                                                     <label className="block text-sm font-medium text-slate-700 mb-1">案件類型 & 等級</label>
                                                     <div className="flex gap-2">
-                                                        <select value={formData.isNew ? 'New' : 'Old'} onChange={e => setFormData({...formData, isNew: e.target.value === 'New'})} className="flex-1 p-2 border rounded-lg bg-white"><option value="New">新案</option><option value="Old">舊案</option></select>
-                                                        <select value={formData.classType} onChange={e => setFormData({...formData, classType: e.target.value})} className="flex-1 p-2 border rounded-lg bg-white"><option value="B">Class B</option><option value="A">Class A</option></select>
+                                                         <select 
+                                                            value={formData.isNew ? 'New' : 'Old'}
+                                                            onChange={(e) => setFormData({...formData, isNew: e.target.value === 'New'})}
+                                                            className="flex-1 p-2 border border-slate-300 rounded-lg bg-white"
+                                                        >
+                                                            <option value="New">新案 (New)</option>
+                                                            <option value="Old">舊案 (Old)</option>
+                                                        </select>
+                                                        <select 
+                                                            value={formData.classType}
+                                                            onChange={(e) => setFormData({...formData, classType: e.target.value})}
+                                                            className="flex-1 p-2 border border-slate-300 rounded-lg bg-white"
+                                                        >
+                                                            
+                                                            <option value="A">Class A</option>
+                                                            <option value="B">Class B</option>
+                                                            
+                                                        </select>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="space-y-3 mb-6">
-                                                <label className={`block p-3 rounded-lg border cursor-pointer transition-all ${formData.hasEn ? 'bg-white border-blue-300' : 'bg-slate-50 opacity-80'}`}>
-                                                    <div className="flex items-center gap-3"><input type="checkbox" checked={formData.hasEn} onChange={e => setFormData({...formData, hasEn: e.target.checked})} className="w-5 h-5 text-blue-600 rounded"/><span className={`text-sm font-bold ${formData.hasEn ? 'text-blue-700' : 'text-slate-500'}`}>英文報告</span></div>
-                                                    {formData.hasEn && <div className="flex gap-4 ml-8 mt-2"><div className="flex items-center gap-2"><span className="text-xs text-slate-500">份數:</span><input type="number" min="1" value={formData.enCopies} onChange={e => setFormData({...formData, enCopies: e.target.value})} className="w-full p-1.5 border rounded text-sm"/></div><div className="flex items-center gap-2"><span className="text-xs text-slate-500">Mode數:</span><input type="number" min="1" value={formData.enModes} onChange={e => setFormData({...formData, enModes: e.target.value})} className="w-full p-1.5 border rounded text-sm"/></div></div>}
+
+                                            <hr className="border-blue-200 my-4" />
+                                            
+                                            {/* 報告設定區域 */}
+                                            <div className="mb-2">
+                                                <label className="block text-sm font-medium text-slate-700 mb-3">報告類型與數量設定</label>
+                                                
+                                                {/* 英文報告設定 */}
+                                                <label className={`block p-3 rounded-lg border mb-3 transition-all cursor-pointer ${formData.hasEn ? 'bg-white border-blue-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-80'}`}>
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.hasEn}
+                                                            onChange={(e) => setFormData({...formData, hasEn: e.target.checked})}
+                                                            className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                                                        />
+                                                        <span className={`text-sm font-bold ${formData.hasEn ? 'text-blue-700' : 'text-slate-500'}`}>
+                                                            英文報告 (English)
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    {formData.hasEn && (
+                                                        <div className="flex gap-4 ml-8" onClick={(e) => e.stopPropagation()}>
+                                                            <div className="flex-1 flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500">份數:</span>
+                                                                <input 
+                                                                    type="number" min="1"
+                                                                    value={formData.enCopies}
+                                                                    onChange={(e) => setFormData({...formData, enCopies: e.target.value})}
+                                                                    className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                                                />
+                                                            </div>
+                                                            <div className="flex-1 flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500">Mode數:</span>
+                                                                <input 
+                                                                    type="number" min="1"
+                                                                    value={formData.enModes}
+                                                                    onChange={(e) => setFormData({...formData, enModes: e.target.value})}
+                                                                    className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </label>
-                                                <label className={`block p-3 rounded-lg border cursor-pointer transition-all ${formData.hasCh ? 'bg-white border-emerald-300' : 'bg-slate-50 opacity-80'}`}>
-                                                    <div className="flex items-center gap-3"><input type="checkbox" checked={formData.hasCh} onChange={e => setFormData({...formData, hasCh: e.target.checked})} className="w-5 h-5 text-emerald-600 rounded"/><span className={`text-sm font-bold ${formData.hasCh ? 'text-emerald-700' : 'text-slate-500'}`}>中文報告</span>{formData.hasCh && formData.classType === 'B' && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full ml-auto">🔥 痛苦加成</span>}</div>
-                                                    {formData.hasCh && <div className="flex gap-4 ml-8 mt-2"><div className="flex items-center gap-2"><span className="text-xs text-slate-500">份數:</span><input type="number" min="1" value={formData.chCopies} onChange={e => setFormData({...formData, chCopies: e.target.value})} className="w-full p-1.5 border rounded text-sm"/></div><div className="flex items-center gap-2"><span className="text-xs text-slate-500">Mode數:</span><input type="number" min="1" value={formData.chModes} onChange={e => setFormData({...formData, chModes: e.target.value})} className="w-full p-1.5 border rounded text-sm"/></div></div>}
+
+                                                {/* 中文報告設定 */}
+                                                <label className={`block p-3 rounded-lg border transition-all cursor-pointer ${formData.hasCh ? 'bg-white border-emerald-300 shadow-sm' : 'bg-slate-50 border-slate-200 opacity-80'}`}>
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <input 
+                                                            type="checkbox"
+                                                            checked={formData.hasCh}
+                                                            onChange={(e) => setFormData({...formData, hasCh: e.target.checked})}
+                                                            className="w-5 h-5 text-emerald-600 rounded focus:ring-emerald-500 border-gray-300"
+                                                        />
+                                                        <span className={`text-sm font-bold ${formData.hasCh ? 'text-emerald-700' : 'text-slate-500'}`}>
+                                                            中文報告 (Chinese)
+                                                        </span>
+                                                        {formData.hasCh && formData.classType === 'B' && (
+                                                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+                                                                🔥 痛苦加成已啟動
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {formData.hasCh && (
+                                                        <div className="flex gap-4 ml-8" onClick={(e) => e.stopPropagation()}>
+                                                            <div className="flex-1 flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500">份數:</span>
+                                                                <input 
+                                                                    type="number" min="1"
+                                                                    value={formData.chCopies}
+                                                                    onChange={(e) => setFormData({...formData, chCopies: e.target.value})}
+                                                                    className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                                                />
+                                                            </div>
+                                                            <div className="flex-1 flex items-center gap-2">
+                                                                <span className="text-xs text-slate-500">Mode數:</span>
+                                                                <input 
+                                                                    type="number" min="1"
+                                                                    value={formData.chModes}
+                                                                    onChange={(e) => setFormData({...formData, chModes: e.target.value})}
+                                                                    className="w-full p-1.5 border border-slate-300 rounded text-sm"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </label>
                                             </div>
-                                            <div className="bg-white/60 p-3 rounded-lg border mb-6 flex justify-between items-center"><span>本案預估權重：</span><span className="text-2xl font-bold text-blue-600">{calculateWeight(formData)}</span></div>
-                                            <div className="mb-6"><label className="block text-sm font-medium mb-2">指派人員 (建議: <strong className="text-green-600">{recommendedAssignee}</strong>)</label>
-                                            <div className="flex flex-wrap gap-2">{personnel.map(p => (<button key={p} onClick={() => setFormData({...formData, manualAssignee: p})} className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${(formData.manualAssignee || recommendedAssignee) === p ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-slate-600 hover:border-blue-300'}`}>{p} {recommendedAssignee === p && !formData.manualAssignee && '★'}</button>))}</div></div>
-                                            <button onClick={handleAssign} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-95">確認派案</button>
+
+                                            {/* Dynamic Weight Preview */}
+                                            <div className="bg-white/60 p-3 rounded-lg border border-blue-100 mb-6 flex justify-between items-center">
+                                                <span className="text-sm text-slate-600">本案預估權重：</span>
+                                                <span className="text-2xl font-bold text-blue-600">{calculateWeight(formData)}</span>
+                                            </div>
+
+                                            <div className="mb-6">
+                                                <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                    指派人員 
+                                                    <span className="ml-2 text-xs font-normal text-slate-500">(系統建議: <strong className="text-green-600">{recommendedAssignee}</strong>)</span>
+                                                </label>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {personnel.map(p => (
+                                                        <button
+                                                            key={p}
+                                                            onClick={() => setFormData({...formData, manualAssignee: p})}
+                                                            className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${
+                                                                (formData.manualAssignee || recommendedAssignee) === p
+                                                                    ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-200'
+                                                                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                                                            }`}
+                                                        >
+                                                            {p}
+                                                            {recommendedAssignee === p && !formData.manualAssignee && <span className="ml-1 text-xs opacity-80">★</span>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={handleAssign}
+                                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all shadow-md active:scale-[0.98]"
+                                            >
+                                                確認派案
+                                            </button>
                                         </div>
                                     </div>
+
+                                    {/* Right: Stats */}
                                     <div className="space-y-6">
-                                        <div className="bg-white border rounded-xl p-6 shadow-sm"><h3 className="font-bold mb-4">當前工作量統計</h3>
-                                            <div className="text-xs text-slate-500 mb-4 flex gap-2 items-center"><input type="date" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} className="border rounded px-1"/><ArrowRight size={12}/><input type="date" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} className="border rounded px-1"/></div>
-                                            <div className="space-y-4">{workloadStats.map((stat, idx) => (<div key={stat.name} className="relative"><div className="flex justify-between text-sm mb-1"><span className={`font-medium ${idx === 0 ? 'text-green-600' : 'text-slate-700'}`}>{stat.name} {idx === 0 && '(最閒)'}</span><span className="font-bold text-slate-600">{stat.weight} pts</span></div><div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden"><div className={`h-2.5 rounded-full ${idx === 0 ? 'bg-green-500' : 'bg-blue-400'}`} style={{ width: `${Math.min((stat.weight / (workloadStats[workloadStats.length-1].weight || 1)) * 100, 100)}%` }}></div></div></div>))}</div>
+                                        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                            <h3 className="font-bold text-slate-800 mb-4">當前工作量統計</h3>
+                                            <div className="text-xs text-slate-500 mb-4 flex gap-2 items-center">
+                                                <input 
+                                                    type="date" 
+                                                    value={dateRange.start}
+                                                    onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
+                                                    className="border rounded px-1"
+                                                />
+                                                <ArrowRight size={12}/>
+                                                <input 
+                                                    type="date" 
+                                                    value={dateRange.end}
+                                                    onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
+                                                    className="border rounded px-1"
+                                                />
+                                            </div>
+                                            
+                                            <div className="space-y-4">
+                                                {workloadStats.map((stat, idx) => (
+                                                    <div key={stat.name} className="relative">
+                                                        <div className="flex justify-between text-sm mb-1">
+                                                            <span className={`font-medium ${idx === 0 ? 'text-green-600' : 'text-slate-700'}`}>
+                                                                {stat.name} {idx === 0 && '(最閒)'}
+                                                            </span>
+                                                            <span className="font-bold text-slate-600">{stat.weight} pts</span>
+                                                        </div>
+                                                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                                                            <div 
+                                                                className={`h-2.5 rounded-full ${idx === 0 ? 'bg-green-500' : 'bg-blue-400'}`} 
+                                                                style={{ width: `${Math.min((stat.weight / (workloadStats[workloadStats.length-1].weight || 1)) * 100, 100)}%` }}
+                                                            ></div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 text-sm text-orange-800">
+                                            <p className="font-bold mb-1">💡 派案小提示</p>
+                                            <p>若同時勾選中英文報告，權重會疊加計算。</p>
+                                            <p className="mt-1">Class B 的中文報告仍享有 {weights.chClassBBonus} 分的特別加成。</p>
                                         </div>
                                     </div>
                                 </div>
                             )}
 
+                            {/* 2. History Tab */}
                             {activeTab === 'history' && (
-                                <div className="overflow-x-auto border rounded-lg">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="bg-slate-50 border-b"><tr><th className="px-4 py-3">時間</th><th className="px-4 py-3">案號</th><th className="px-4 py-3">人員</th><th className="px-4 py-3">報告詳情</th><th className="px-4 py-3 text-right">權重</th><th className="px-4 py-3 text-center">操作</th></tr></thead>
-                                        <tbody>
-                                            {records.map(rec => (<tr key={rec.id} className="border-b hover:bg-slate-50"><td className="px-4 py-3">{new Date(rec.timestamp).toLocaleDateString()}</td><td className="px-4 py-3 font-medium">{rec.caseNumber}</td><td className="px-4 py-3"><span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">{rec.assignee}</span></td><td className="px-4 py-3">{renderReportDetail(rec)}</td><td className="px-4 py-3 text-right font-bold">{rec.weight}</td><td className="px-4 py-3 text-center"><button onClick={() => handleDeleteRecord(rec.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button></td></tr>))}
-                                        </tbody>
-                                    </table>
+                                <div>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="text-xl font-bold text-slate-800">歷史派案紀錄</h2>
+                                        <span className="text-sm text-slate-500">共 {records.length} 筆</span>
+                                    </div>
+                                    <div className="overflow-x-auto border rounded-lg">
+                                        <table className="w-full text-sm text-left text-slate-600">
+                                            <thead className="text-xs text-slate-700 uppercase bg-slate-50 border-b">
+                                                <tr>
+                                                    <th className="px-4 py-3">時間</th>
+                                                    <th className="px-4 py-3">案號</th>
+                                                    <th className="px-4 py-3">人員</th>
+                                                    <th className="px-4 py-3">類型/等級</th>
+                                                    <th className="px-4 py-3">報告詳情</th>
+                                                    <th className="px-4 py-3 text-right">權重</th>
+                                                    <th className="px-4 py-3 text-center">操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {records.map(rec => (
+                                                    <tr key={rec.id} className="bg-white border-b hover:bg-slate-50">
+                                                        <td className="px-4 py-3">{new Date(rec.timestamp).toLocaleDateString()}</td>
+                                                        <td className="px-4 py-3 font-medium text-slate-900">{rec.caseNumber}</td>
+                                                        <td className="px-4 py-3">
+                                                            <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">{rec.assignee}</span>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {rec.isNew ? 'New' : 'Old'} / {rec.classType}
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            {renderReportDetail(rec)}
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right font-bold">{rec.weight}</td>
+                                                        <td className="px-4 py-3 text-center">
+                                                            <button 
+                                                                onClick={() => handleDeleteRecord(rec.id)}
+                                                                className="text-red-500 hover:text-red-700 p-1"
+                                                            >
+                                                                <Trash2 size={16} />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {records.length === 0 && (
+                                                    <tr>
+                                                        <td colSpan="8" className="px-4 py-8 text-center text-slate-400">尚無紀錄</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             )}
 
+                            {/* 3. Settings Tab */}
                             {activeTab === 'settings' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="bg-white border rounded-xl p-4 space-y-3"><h2 className="text-xl font-bold flex items-center gap-2"><UserPlus size={20}/> 人員管理</h2>
-                                        {personnel.map(p => (<div key={p} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg"><span>{p}</span><button onClick={() => setPersonnel(personnel.filter(n => n !== p))} className="text-red-400" disabled={personnel.length <= 1}><Trash2 size={16} /></button></div>))}
-                                        <div className="flex gap-2 mt-4"><input type="text" id="newPerson" className="flex-1 border rounded px-2 text-sm" placeholder="名字"/><button onClick={() => {const input = document.getElementById('newPerson'); if(input.value.trim()){setPersonnel([...personnel, input.value.trim()]); input.value=''}}} className="bg-blue-600 text-white px-3 py-1 rounded text-sm">新增</button></div>
+                                    {/* Personnel Settings */}
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                            <UserPlus size={20}/> 人員管理
+                                        </h2>
+                                        <div className="bg-white border rounded-xl p-4 space-y-3">
+                                            {personnel.map(p => (
+                                                <div key={p} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg">
+                                                    <span>{p}</span>
+                                                    <button 
+                                                        onClick={() => setPersonnel(personnel.filter(name => name !== p))}
+                                                        className="text-red-400 hover:text-red-600"
+                                                        disabled={personnel.length <= 1}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <div className="flex gap-2 mt-4 pt-4 border-t">
+                                                <input 
+                                                    type="text" 
+                                                    id="newPerson" 
+                                                    placeholder="輸入新名字"
+                                                    className="flex-1 border rounded px-2 text-sm"
+                                                    onKeyDown={(e) => {
+                                                        if(e.key === 'Enter') {
+                                                            const val = e.target.value.trim();
+                                                            if(val && !personnel.includes(val)) {
+                                                                setPersonnel([...personnel, val]);
+                                                                e.target.value = '';
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                                <button 
+                                                    onClick={() => {
+                                                        const input = document.getElementById('newPerson');
+                                                        const val = input.value.trim();
+                                                        if(val && !personnel.includes(val)) {
+                                                            setPersonnel([...personnel, val]);
+                                                            input.value = '';
+                                                        }
+                                                    }}
+                                                    className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
+                                                >
+                                                    新增
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="bg-white border rounded-xl p-4 space-y-2"><h2 className="text-xl font-bold flex items-center gap-2"><Settings size={20}/> 權重設定</h2>
-                                        {Object.entries(weights).map(([k, v]) => (<div key={k} className="flex justify-between items-center p-2 border-b"><span>{k}</span><input type="number" value={v} onChange={e => setWeights({...weights, [k]: Number(e.target.value)})} className="w-16 border rounded text-right px-1"/></div>))}
+
+                                    {/* Weight Settings */}
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                            <Settings size={20}/> 權重參數設定
+                                        </h2>
+                                        <div className="bg-white border rounded-xl p-4 grid grid-cols-1 gap-4">
+                                            {[
+                                                { k: 'newCase', l: '新案 (New Case)' },
+                                                { k: 'oldCase', l: '舊案 (Old Case)' },
+                                                { k: 'classA', l: 'Class A' },
+                                                { k: 'classB', l: 'Class B' },
+                                                { k: 'enReport', l: '英文報告基本分' },
+                                                { k: 'chReport', l: '中文報告基本分' },
+                                                { k: 'reportCountUnit', l: '每份報告加權' },
+                                                { k: 'modeCountUnit', l: '每個 Mode 加權' },
+                                                { k: 'chClassBBonus', l: '中文 Class B 特別加權' },
+                                            ].map(item => (
+                                                <div key={item.k} className="flex justify-between items-center">
+                                                    <label className="text-sm text-slate-600">{item.l}</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={weights[item.k]}
+                                                        onChange={(e) => setWeights({...weights, [item.k]: Number(e.target.value)})}
+                                                        className="w-20 border rounded px-2 py-1 text-right focus:ring-2 focus:ring-blue-500 outline-none"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
+                            {/* 4. Data Tab */}
                             {activeTab === 'data' && (
-                                <div className="flex flex-col items-center py-12 space-y-6">
-                                    <div className="text-center"><h2 className="text-2xl font-bold">資料管理</h2><p className="text-slate-500">所有的紀錄都存在此瀏覽器中，換電腦前請先匯出備份。</p></div>
+                                <div className="flex flex-col items-center justify-center py-10 space-y-6">
+                                    <div className="text-center space-y-2">
+                                        <h2 className="text-2xl font-bold text-slate-800">資料備份與還原</h2>
+                                        <p className="text-slate-500">所有的紀錄都存在此瀏覽器中，請定期下載 CSV 備份。</p>
+                                    </div>
+                                    
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-                                        <button onClick={exportCSV} className="bg-blue-50 border-2 border-blue-200 p-6 rounded-xl text-center hover:shadow-md transition-shadow flex flex-col items-center"><Save size={32} className="text-blue-600 mb-2"/>匯出備份 (CSV)</button>
-                                        <label className="bg-emerald-50 border-2 border-emerald-200 p-6 rounded-xl text-center hover:shadow-md transition-shadow flex flex-col items-center cursor-pointer"><Upload size={32} className="text-emerald-600 mb-2"/>匯入資料 (CSV)<input type="file" accept=".csv" onChange={importCSV} className="hidden" /></label>
+                                        <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl text-center hover:shadow-md transition-shadow">
+                                            <Save size={48} className="mx-auto text-blue-600 mb-4" />
+                                            <h3 className="font-bold text-lg mb-2">匯出 CSV</h3>
+                                            <p className="text-sm text-slate-600 mb-4">
+                                                點擊下載最新的 CSV 檔，請將此檔案<b>上傳並覆蓋 GitHub 專案</b>中的 data.csv，以完成資料儲存。
+                                            </p>
+                                            <button 
+                                                onClick={exportCSV}
+                                                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium"
+                                            >
+                                                下載 data.csv (覆蓋用)
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-xl text-center hover:shadow-md transition-shadow">
+                                            <Upload size={48} className="mx-auto text-emerald-600 mb-4" />
+                                            <h3 className="font-bold text-lg mb-2">手動匯入 CSV</h3>
+                                            <p className="text-sm text-slate-600 mb-4">若自動讀取失敗，可由此手動讀取。</p>
+                                            <label className="bg-emerald-600 text-white px-6 py-2 rounded-lg hover:bg-emerald-700 font-medium cursor-pointer inline-block">
+                                                選擇檔案
+                                                <input type="file" accept=".csv" onChange={importCSV} className="hidden" />
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {notification && <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl animate-bounce">{notification}</div>}
+
+                        {/* Notification Toast */}
+                        {notification && (
+                            <div className="fixed bottom-4 right-4 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-xl animate-bounce">
+                                {notification}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         };
 
+        // --- 程式入口點 (Entry Point) ---
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
 </html>
-
-
